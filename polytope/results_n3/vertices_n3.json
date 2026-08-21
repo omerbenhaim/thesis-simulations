@@ -1,0 +1,530 @@
+{
+  "n": 3,
+  "total_vertices": 66,
+  "support_size_distribution": {
+    "9": 12,
+    "17": 54
+  },
+  "unique_value_distribution": {
+    "1": 12,
+    "1/2,1": 54
+  },
+  "vertices": [
+    {
+      "vertex_id": 0,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 1,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 2,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 3,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 4,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 5,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 6,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 7,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 8,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 9,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 10,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 11,
+      "support_size": 9,
+      "unique_values": [
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 12,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 13,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 14,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 15,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 16,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 17,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 18,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 19,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 20,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 21,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 22,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 23,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 24,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 25,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 26,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 27,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 28,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 29,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 30,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 31,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 32,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 33,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 34,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 35,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 36,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 37,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 38,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 39,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 40,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 41,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 42,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 43,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 44,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 45,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 46,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 47,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 48,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 49,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 50,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 51,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 52,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 53,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 54,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 55,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 56,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 57,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 58,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 59,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 60,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 61,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 62,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 63,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 64,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    },
+    {
+      "vertex_id": 65,
+      "support_size": 17,
+      "unique_values": [
+        "1/2",
+        "1"
+      ]
+    }
+  ]
+}

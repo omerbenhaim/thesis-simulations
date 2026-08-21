@@ -1,0 +1,2 @@
+{"n": 3, "category": "solvable_no_positive", "support_size": 19, "t_star": -0.0, "lp_status": 0, "support_map": [[[2], [1, 2], [0, 2]], [[0, 1], [0, 1, 2], [0, 1, 2]], [[1, 2], [0, 2], [1, 2]]]}
+{"n": 3, "category": "solvable_no_positive", "support_size": 17, "t_star": -0.0, "lp_status": 0, "support_map": [[[0], [0, 1], [0, 1, 2]], [[2], [0, 1], [1, 2]], [[1, 2], [0, 1, 2], [0]]]}

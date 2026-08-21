@@ -1,0 +1,38 @@
+{
+    "7": {
+        "2": {
+            "2": {
+                "4": {
+                    "num_trials": 91,
+                    "summary": {
+                        "num_crossed_edges": {"mean": 52.022, "std": 5.031, "min": 40, "max": 64, "n": 91, "sum": 4734, "sumsq": 248550},
+                        "triangle_count_lift": {"mean": 103.8901, "std": 8.8863, "min": 80, "max": 128, "n": 91, "sum": 9454, "sumsq": 989284},
+                        "num_4_cycles_lift": {"mean": 942.8791, "std": 31.5964, "min": 866, "max": 1046, "n": 91, "sum": 85802, "sumsq": 80990764},
+                        "num_5_cycles_lift": {"mean": 6553.5824, "std": 72.5727, "min": 6384, "max": 6720, "n": 91, "sum": 596376, "sumsq": 3908873280},
+                        "num_6_cycles_lift": {"mean": 41975.8242, "std": 365.3368, "min": 40802, "max": 42806, "n": 91, "sum": 3819800, "sumsq": 160351265578},
+                        "odd_girth_lift": {"mean": 3.0, "std": 0.0, "min": 3, "max": 3, "n": 91, "sum": 273, "sumsq": 819},
+                        "odd_parity_base_triangles": {"mean": 53.0549, "std": 4.4431, "min": 41, "max": 65, "n": 91, "sum": 4828, "sumsq": 257926},
+                        "odd_parity_base_4_cycles": {"mean": 473.5604, "std": 15.7982, "min": 422, "max": 512, "n": 91, "sum": 43094, "sumsq": 20430076},
+                        "odd_parity_base_5_cycles": {"mean": 3275.2088, "std": 36.2864, "min": 3192, "max": 3360, "n": 91, "sum": 298044, "sumsq": 976274832},
+                        "odd_parity_base_6_cycles": {"mean": 20030.5714, "std": 105.5354, "min": 19686, "max": 20324, "n": 91, "sum": 1822782, "sumsq": 36512367444}
+                    }
+                },
+                "5": {
+                    "num_trials": 229,
+                    "summary": {
+                        "num_crossed_edges": {"mean": 52.2445, "std": 5.2592, "min": 37, "max": 70, "n": 229, "sum": 11964, "sumsq": 631360},
+                        "triangle_count_lift": {"mean": 105.4585, "std": 10.3781, "min": 76, "max": 130, "n": 229, "sum": 24150, "sumsq": 2571380},
+                        "num_4_cycles_lift": {"mean": 944.8996, "std": 28.2019, "min": 882, "max": 1058, "n": 229, "sum": 216382, "sumsq": 204640596},
+                        "num_5_cycles_lift": {"mean": 6551.8603, "std": 84.0416, "min": 6240, "max": 6888, "n": 229, "sum": 1500376, "sumsq": 9831864256},
+                        "num_6_cycles_lift": {"mean": 41886.8996, "std": 403.6103, "min": 40752, "max": 43498, "n": 229, "sum": 9592100, "sumsq": 401820470796},
+                        "odd_girth_lift": {"mean": 3.0, "std": 0.0, "min": 3, "max": 3, "n": 229, "sum": 687, "sumsq": 2061},
+                        "odd_parity_base_triangles": {"mean": 52.2707, "std": 5.1891, "min": 40, "max": 67, "n": 229, "sum": 11970, "sumsq": 631820},
+                        "odd_parity_base_4_cycles": {"mean": 472.5502, "std": 14.1009, "min": 416, "max": 504, "n": 229, "sum": 108214, "sumsq": 51181884},
+                        "odd_parity_base_5_cycles": {"mean": 3276.0699, "std": 42.0208, "min": 3108, "max": 3432, "n": 229, "sum": 750220, "sumsq": 2458175728},
+                        "odd_parity_base_6_cycles": {"mean": 20052.8384, "std": 101.6043, "min": 19592, "max": 20362, "n": 229, "sum": 4592100, "sumsq": 92086993088}
+                    }
+                }
+            }
+        }
+    }
+}

@@ -554,19 +554,546 @@ def append_distribution_to_ordered_json(
     return os.path.abspath(filename)
 
 
+# ------------------------------------------------------------
+# D. 2-lift structural metrics
+# Compare lifts with different chromatic numbers.
+#
+# Design (agreed):
+#   - base parity metrics: enumerate base simple cycles (len 3..6) ONCE
+#     per (n,k), cache them, then per trial just XOR the crossed-edge
+#     indicator around each cycle. Exact and cheap.
+#   - lift cycle counts: computed DIRECTLY on the lifted graph (not derived
+#     from base-cycle parity, since a simple lift cycle can project to a
+#     non-simple base walk, e.g. a 6-cycle from two odd-parity triangles
+#     sharing a vertex).
+#   - odd_girth_lift: computed DIRECTLY on the lift via BFS.
+#
+# Nothing in section C (chromatic number) is touched.
+# ------------------------------------------------------------
+
+from collections import deque
+
+# cache of base simple cycles, keyed by (n, k, max_cycle_len)
+_BASE_CYCLE_CACHE: Dict[Tuple[int, int, int], Dict[int, list]] = {}
+
+
+def _walk_simple_cycles(G: nx.Graph, max_len: int, on_cycle) -> None:
+    """
+    Enumerate every simple cycle of length 3..max_len exactly once, calling
+    on_cycle(path) with the list of vertices in cyclic order.
+
+    Each cycle is anchored at its minimum-index vertex and emitted in a single
+    canonical direction (path[1] < path[-1]), so no cycle is reported twice.
+    """
+    nodes = list(G.nodes())
+    index = {v: i for i, v in enumerate(nodes)}
+    adj = {v: list(G.neighbors(v)) for v in nodes}
+
+    def dfs(start, current, path, visited):
+        si = index[start]
+        for nxt in adj[current]:
+            if index[nxt] < si:
+                continue
+            if nxt == start:
+                if len(path) >= 3 and index[path[1]] < index[path[-1]]:
+                    on_cycle(path)
+                continue
+            if nxt in visited or len(path) >= max_len:
+                continue
+            visited.add(nxt)
+            path.append(nxt)
+            dfs(start, nxt, path, visited)
+            path.pop()
+            visited.discard(nxt)
+
+    for start in nodes:
+        dfs(start, start, [start], {start})
+
+
+def _count_simple_cycles(G: nx.Graph, max_len: int) -> Dict[int, int]:
+    """Count simple cycles of each length 3..max_len (no storage)."""
+    counts = {L: 0 for L in range(3, max_len + 1)}
+
+    def cb(path):
+        counts[len(path)] += 1
+
+    _walk_simple_cycles(G, max_len, cb)
+    return counts
+
+
+def _base_cycle_edge_sets(G: nx.Graph, max_len: int) -> Dict[int, list]:
+    """
+    Enumerate base simple cycles and store each as a list of edge keys
+    (frozenset({u, v})), grouped by cycle length. Used for parity metrics.
+    """
+    cycles = {L: [] for L in range(3, max_len + 1)}
+
+    def cb(path):
+        L = len(path)
+        edges = [frozenset((path[i], path[(i + 1) % L])) for i in range(L)]
+        cycles[L].append(edges)
+
+    _walk_simple_cycles(G, max_len, cb)
+    return cycles
+
+
+def _get_base_cycles(base_graph: nx.Graph, n: int, k: int,
+                     max_cycle_len: int) -> Dict[int, list]:
+    """Return cached base simple cycles for (n, k), computing them once."""
+    key = (n, k, max_cycle_len)
+    if key not in _BASE_CYCLE_CACHE:
+        _BASE_CYCLE_CACHE[key] = _base_cycle_edge_sets(base_graph, max_cycle_len)
+    return _BASE_CYCLE_CACHE[key]
+
+
+def _odd_girth(G: nx.Graph) -> Optional[int]:
+    """
+    Length of the shortest odd cycle in G, or None if G is bipartite.
+
+    Uses the bipartite double cover: the shortest odd closed walk through a
+    vertex s is the distance from (s, 0) to (s, 1) in the cover, and the
+    shortest such walk is an odd cycle. We BFS from each vertex and keep the
+    minimum.
+    """
+    adj = {v: list(G.neighbors(v)) for v in G.nodes()}
+    best: Optional[int] = None
+
+    for s in G.nodes():
+        # BFS in the double cover from (s, 0), looking for (s, 1)
+        dist = {(s, 0): 0}
+        dq = deque([(s, 0)])
+        found = None
+        while dq:
+            v, p = dq.popleft()
+            d = dist[(v, p)]
+            if best is not None and d + 1 >= best:
+                continue
+            for w in adj[v]:
+                if w == s and p == 0:
+                    found = d + 1
+                    dq.clear()
+                    break
+                state = (w, 1 - p)
+                if state not in dist:
+                    dist[state] = d + 1
+                    dq.append(state)
+            if found is not None:
+                break
+        if found is not None:
+            best = found if best is None else min(best, found)
+            if best == 3:
+                break  # cannot do better than a triangle
+
+    return best
+
+
+def compute_lift_metrics(result: Dict[str, Any],
+                         max_cycle_len: int = 6,
+                         include_crossed_edges: bool = True) -> Dict[str, Any]:
+    """
+    Structural metrics for one lift experiment (see section header).
+
+    Crossed-edge and base-parity metrics are only defined for 2-lifts; for
+    lift_size != 2 they are stored as None. Lift cycle counts and odd girth
+    are computed directly on the lifted graph for any lift size.
+
+    Cycle lengths greater than max_cycle_len are NOT computed and are stored
+    as None (never 0), so "not measured" is never confused with a true zero.
+
+    include_crossed_edges controls whether the (gauge-dependent, verbose)
+    list of crossed base edges is stored. It is redundant for reproduction
+    since each sample stores `seed`, and (n, k, r, seed) regenerates the exact
+    lift; set it False for leaner files. num_crossed_edges is always stored.
+    """
+    n = result["kneser_n"]
+    k = result["kneser_k"]
+    r = result["lift_size"]
+    base = result["base_graph"]
+    lift = result["lift_graph"]
+    perms = result["permutations"]
+
+    metrics: Dict[str, Any] = {
+        "kneser_n": n,
+        "kneser_k": k,
+        "lift_size": r,
+        "chi_base": result["chi_base"],
+        "chi_lift": result["chi_lift"],
+        "trial": result.get("trial"),
+        "seed": result.get("seed"),
+    }
+
+    # --- lift cycle counts (direct on the lift) ---
+    lift_counts = _count_simple_cycles(lift, max_cycle_len)
+
+    def lift_count(L: int):
+        return lift_counts.get(L, 0) if L <= max_cycle_len else None
+
+    metrics["triangle_count_lift"] = lift_count(3)
+    metrics["num_4_cycles_lift"] = lift_count(4)
+    metrics["num_5_cycles_lift"] = lift_count(5)
+    metrics["num_6_cycles_lift"] = lift_count(6)
+    metrics["odd_girth_lift"] = _odd_girth(lift)
+
+    # --- crossed-edge + base parity metrics (2-lifts only) ---
+    if r == 2:
+        identity = list(range(r))
+        crossed_map: Dict[frozenset, bool] = {}
+        crossed_edges = []
+        for e, p in perms.items():
+            is_crossed = list(p) != identity
+            crossed_map[frozenset(e)] = is_crossed
+            if is_crossed:
+                crossed_edges.append(list(e))
+
+        metrics["crossed_edges"] = crossed_edges if include_crossed_edges else None
+        metrics["num_crossed_edges"] = len(crossed_edges)
+
+        base_cycles = _get_base_cycles(base, n, k, max_cycle_len)
+
+        def odd_parity_count(L: int):
+            if L > max_cycle_len:
+                return None
+            total = 0
+            for edges in base_cycles.get(L, []):
+                parity = 0
+                for e in edges:
+                    if crossed_map.get(e, False):
+                        parity ^= 1
+                total += parity
+            return total
+
+        metrics["odd_parity_base_triangles"] = odd_parity_count(3)
+        metrics["odd_parity_base_4_cycles"] = odd_parity_count(4)
+        metrics["odd_parity_base_5_cycles"] = odd_parity_count(5)
+        metrics["odd_parity_base_6_cycles"] = odd_parity_count(6)
+    else:
+        metrics["crossed_edges"] = None
+        metrics["num_crossed_edges"] = None
+        metrics["odd_parity_base_triangles"] = None
+        metrics["odd_parity_base_4_cycles"] = None
+        metrics["odd_parity_base_5_cycles"] = None
+        metrics["odd_parity_base_6_cycles"] = None
+
+    return metrics
+
+
+# numeric metrics worth summarizing per chi_lift group (identifiers like
+# trial/seed and constants like kneser_n are intentionally excluded)
+_SUMMARY_METRIC_KEYS = [
+    "num_crossed_edges",
+    "triangle_count_lift",
+    "num_4_cycles_lift",
+    "num_5_cycles_lift",
+    "num_6_cycles_lift",
+    "odd_girth_lift",
+    "odd_parity_base_triangles",
+    "odd_parity_base_4_cycles",
+    "odd_parity_base_5_cycles",
+    "odd_parity_base_6_cycles",
+]
+
+
+class _Inline(dict):
+    """A dict marked to be serialized on a single line in the metrics file."""
+    pass
+
+
+def _dump_metrics_file(structure: Any, filename: str) -> str:
+    """
+    Write `structure` as JSON with indent=4, except dicts marked _Inline are
+    kept on a single line. This lets each per-metric summary occupy one line
+    (so chi_lift blocks stay short and comparable) while the outer nesting
+    stays readable.
+    """
+    placeholders: Dict[str, str] = {}
+
+    def encode(o):
+        if isinstance(o, _Inline):
+            token = f"@@INLINE{len(placeholders)}@@"
+            placeholders[token] = json.dumps(o, separators=(", ", ": "))
+            return token
+        if isinstance(o, dict):
+            return {key: encode(val) for key, val in o.items()}
+        if isinstance(o, list):
+            return [encode(val) for val in o]
+        return o
+
+    text = json.dumps(encode(structure), indent=4)
+    for token, compact in placeholders.items():
+        text = text.replace('"' + token + '"', compact)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(text)
+    return os.path.abspath(filename)
+
+
+# --- running aggregates: let us update mean/std incrementally without ever
+# --- keeping the individual samples around.
+
+def _new_agg() -> Dict[str, Any]:
+    return {"n": 0, "sum": 0, "sumsq": 0, "min": None, "max": None}
+
+
+def _agg_add(agg: Dict[str, Any], v) -> None:
+    agg["n"] += 1
+    agg["sum"] += v
+    agg["sumsq"] += v * v
+    agg["min"] = v if agg["min"] is None else min(agg["min"], v)
+    agg["max"] = v if agg["max"] is None else max(agg["max"], v)
+
+
+def _agg_to_leaf(agg: Optional[Dict[str, Any]]):
+    """Render a running aggregate as a compact one-line summary, or None.
+
+    mean/std/min/max are the human-readable values; n/sum/sumsq are kept so the
+    aggregate can be merged on the next append without needing the samples.
+    """
+    if not agg or agg["n"] == 0:
+        return None
+    n = agg["n"]
+    mean = agg["sum"] / n
+    if n > 1:
+        var = (agg["sumsq"] - agg["sum"] ** 2 / n) / (n - 1)
+        std = max(var, 0.0) ** 0.5
+    else:
+        std = 0.0
+    return _Inline({
+        "mean": round(mean, 4),
+        "std": round(std, 4),
+        "min": agg["min"],
+        "max": agg["max"],
+        "n": n,
+        "sum": agg["sum"],
+        "sumsq": agg["sumsq"],
+    })
+
+
+def _load_group(block: Dict[str, Any]):
+    """
+    Recover (num_trials, aggregates, samples) from a stored chi_lift block,
+    accepting either the new aggregate format (summary leaves carry sum/sumsq)
+    or the older sample-based format (rebuild aggregates from samples).
+    """
+    num_trials = block.get("num_trials", 0)
+    aggs: Dict[str, Dict[str, Any]] = {}
+    samples = block.get("samples") or []
+    summary = block.get("summary")
+
+    if summary and any(isinstance(v, dict) and "sum" in v for v in summary.values()):
+        for key, leaf in summary.items():
+            if isinstance(leaf, dict) and "sum" in leaf and "sumsq" in leaf:
+                aggs[key] = {
+                    "n": leaf["n"], "sum": leaf["sum"], "sumsq": leaf["sumsq"],
+                    "min": leaf["min"], "max": leaf["max"],
+                }
+    elif samples:
+        for key in _SUMMARY_METRIC_KEYS:
+            agg = _new_agg()
+            for s in samples:
+                v = s.get(key)
+                if v is not None:
+                    _agg_add(agg, v)
+            if agg["n"] > 0:
+                aggs[key] = agg
+
+    return num_trials, aggs, samples
+
+
+def _load_all_groups(data: Dict[str, Any]) -> Dict[Tuple[str, str, str, str], Dict[str, Any]]:
+    groups: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+    for n in data:
+        for k in data[n]:
+            for r in data[n][k]:
+                for chi in data[n][k][r]:
+                    nt, aggs, samples = _load_group(data[n][k][r][chi])
+                    groups[(n, k, r, chi)] = {
+                        "num_trials": nt, "aggs": aggs, "samples": samples,
+                    }
+    return groups
+
+
+def _write_groups(groups: Dict[Tuple[str, str, str, str], Dict[str, Any]],
+                  filename: str, store_samples: bool) -> str:
+    nested: Dict[str, Any] = {}
+    for (n, k, r, chi), g in groups.items():
+        summary = {key: _agg_to_leaf(g["aggs"].get(key))
+                   for key in _SUMMARY_METRIC_KEYS}
+        block: Dict[str, Any] = {"num_trials": g["num_trials"], "summary": summary}
+        if store_samples and g.get("samples"):
+            block["samples"] = g["samples"]
+        nested.setdefault(n, {}).setdefault(k, {}).setdefault(r, {})[chi] = block
+
+    ordered = {
+        nn: {
+            kk: {
+                rr: {cc: nested[nn][kk][rr][cc]
+                     for cc in sorted(nested[nn][kk][rr], key=int)}
+                for rr in sorted(nested[nn][kk], key=int)
+            }
+            for kk in sorted(nested[nn], key=int)
+        }
+        for nn in sorted(nested, key=int)
+    }
+    return _dump_metrics_file(ordered, filename)
+
+
+def append_metrics_to_ordered_json(
+    trials: List[Dict[str, Any]],
+    filename: str = "kneser_lift_metrics.json",
+    max_cycle_len: int = 6,
+    store_samples: bool = False,
+    include_crossed_edges: bool = True,
+) -> str:
+    """
+    Accumulate per-trial structural metrics into one JSON file organized as:
+        data[n][k][r][chi_lift] = {
+            "num_trials": ...,
+            "summary": {metric -> {mean, std, min, max, n, sum, sumsq}},
+            "samples": [...]   # only if store_samples=True
+        }
+
+    Each metric's summary is one line, so chi_lift blocks stay short and easy
+    to compare without scrolling. Statistics are maintained as running
+    aggregates (the sum/sumsq fields), so they update correctly across repeated
+    appends even though the individual samples are NOT stored by default.
+
+    store_samples=True additionally keeps the raw per-trial records at the end
+    of each block (after the summary). include_crossed_edges applies only then.
+    """
+    if not trials:
+        raise ValueError("No trials to save")
+
+    if os.path.exists(filename):
+        with open(filename, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+
+    groups = _load_all_groups(data)
+
+    for result in trials:
+        m = compute_lift_metrics(
+            result,
+            max_cycle_len=max_cycle_len,
+            include_crossed_edges=include_crossed_edges,
+        )
+        key = (str(m["kneser_n"]), str(m["kneser_k"]),
+               str(m["lift_size"]), str(m["chi_lift"]))
+        g = groups.setdefault(
+            key, {"num_trials": 0, "aggs": {}, "samples": []}
+        )
+        g["num_trials"] += 1
+        for mk in _SUMMARY_METRIC_KEYS:
+            v = m.get(mk)
+            if v is None:
+                continue
+            g["aggs"].setdefault(mk, _new_agg())
+            _agg_add(g["aggs"][mk], v)
+        if store_samples:
+            g["samples"].append(m)
+
+    return _write_groups(groups, filename, store_samples=store_samples)
+
+
+def print_metrics_summary(
+    filename: str = "kneser_lift_metrics.json",
+    columns: Optional[List[str]] = None,
+) -> None:
+    """
+    Print one compact "mean ± std" table per (n, k, r), with one row per
+    chi_lift. Reads the summary blocks written by append_metrics_to_ordered_json.
+
+    By default it shows the most meaningful discriminators (base parity metrics
+    + odd girth); pass `columns` to choose other metric keys.
+    """
+    if columns is None:
+        columns = [
+            "odd_parity_base_triangles",
+            "odd_parity_base_4_cycles",
+            "odd_parity_base_5_cycles",
+            "odd_parity_base_6_cycles",
+            "odd_girth_lift",
+        ]
+
+    short = {
+        "odd_parity_base_triangles": "odd_tri",
+        "odd_parity_base_4_cycles": "odd_4c",
+        "odd_parity_base_5_cycles": "odd_5c",
+        "odd_parity_base_6_cycles": "odd_6c",
+        "odd_girth_lift": "odd_girth",
+        "num_crossed_edges": "ncross",
+        "triangle_count_lift": "tri",
+        "num_4_cycles_lift": "4c",
+        "num_5_cycles_lift": "5c",
+        "num_6_cycles_lift": "6c",
+    }
+
+    def cell(stats) -> str:
+        if stats is None:
+            return "-"
+        return f"{stats['mean']:.1f}+/-{stats['std']:.1f}"
+
+    with open(filename, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    for nn in sorted(data, key=int):
+        for kk in sorted(data[nn], key=int):
+            for rr in sorted(data[nn][kk], key=int):
+                group = data[nn][kk][rr]
+                header = ["chi", "trials"] + [short.get(c, c) for c in columns]
+                widths = [max(len(h), 11) for h in header]
+                print(f"\nKG(n={nn}, k={kk}), lift_size={rr}")
+                print("  ".join(h.ljust(w) for h, w in zip(header, widths)))
+                for chi in sorted(group, key=int):
+                    blk = group[chi]
+                    # use stored summary, falling back to rebuilding from
+                    # aggregates/samples for any older file layout
+                    summary = blk.get("summary")
+                    if not summary:
+                        _, aggs, _ = _load_group(blk)
+                        summary = {mk: _agg_to_leaf(aggs.get(mk))
+                                   for mk in _SUMMARY_METRIC_KEYS}
+                    row = [chi, str(blk["num_trials"])]
+                    row += [cell(summary.get(c)) for c in columns]
+                    print("  ".join(c.ljust(w) for c, w in zip(row, widths)))
+
+
+def resummarize_metrics_file(
+    filename: str = "kneser_lift_metrics.json",
+    store_samples: bool = False,
+) -> str:
+    """
+    Rewrite an existing metrics file into the current compact format: one
+    line per metric, running aggregates, samples dropped by default.
+
+    Works on any older layout (sample-based or earlier summary blocks); use it
+    once to migrate a file, or to drop samples from a file saved with
+    store_samples=True.
+    """
+    with open(filename, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    groups = _load_all_groups(data)
+    return _write_groups(groups, filename, store_samples=store_samples)
+
+
 if __name__ == "__main__":
     # # Several trials
     master_seed = None
+    # Longest cycle length to measure in the metrics. Drop to 5 (or 4) if
+    # 6-cycle counting on the lift is too slow at larger n; uncomputed
+    # lengths are stored as None, not 0.
+    max_cycle_len = 6
     start = time.perf_counter()
 
     trials = run_trials(
-        kneser_n=10,
+        kneser_n=7,
         kneser_k=2,
         lift_size=2,
-        trials=4,
+        trials=100,
         seed=master_seed,
     )
-    end = time.perf_counter()
+    end_trials = time.perf_counter()
 
     params = trials[0]
     print(f"Base graph : KG(n={params['kneser_n']}, k={params['kneser_k']})")
@@ -588,9 +1115,19 @@ if __name__ == "__main__":
 
     print("\nChromatic number distribution:")
     print(distribution)
-    print(f"\nTotal runtime: {end - start:.4f} seconds")
+    print(f"\nChromatic runtime (trials only): {end_trials - start:.4f} seconds")
     if master_seed is None:
         saved_file = append_distribution_to_ordered_json(trials)
+        metrics_file = append_metrics_to_ordered_json(
+            trials, max_cycle_len=max_cycle_len,
+            include_crossed_edges=False,
+        )
+        print(f"Saved metrics to: {metrics_file}")
+    else:
+        print("Used fixed seed, so results were not saved.")
+
+    end = time.perf_counter()
+    print(f"Total runtime (incl. metrics): {end - start:.4f} seconds")
 
     # # Exhaustively check chromatic number of ALL lifts for each config.
     # configs = [
