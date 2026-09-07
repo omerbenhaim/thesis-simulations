@@ -392,6 +392,30 @@ def solution_is_integral(sol: Dict[str, Any], eps_value: float = 1e-6) -> bool:
         abs(x[i, j, k] - 1.0) < eps_value for (i, j, k) in S)
 
 
+def exact_ratio_values(A, S, triple_to_var, b,
+                       max_den: int = 10 ** 6, tol: float = 1e-7) -> List[str]:
+    """
+    Distinct support values as exact ratios 'p/q'.  Re-solves A_S y = 1 cleanly
+    (lstsq, ~1e-14 accurate) and snaps each value with limit_denominator on the
+    high-precision solution, so even large-denominator vertex values recover
+    exactly.  A value that does not reconstruct within tol keeps a decimal.
+    """
+    if not S:
+        return []
+    cols = [triple_to_var[t] for t in S]
+    A_S = A[:, cols].toarray()
+    y, *_ = np.linalg.lstsq(A_S, b, rcond=None)
+    pairs: Dict[str, float] = {}
+    for v in y:
+        v = float(v)
+        f = Fraction(v).limit_denominator(max_den)
+        if abs(float(f) - v) <= tol:
+            pairs[str(f)] = float(f)
+        else:
+            pairs[format(v, ".6g")] = v
+    return [s for s, _ in sorted(pairs.items(), key=lambda kv: kv[1])]
+
+
 def build_vertex_record(n: int, seed: int, sol: Dict[str, Any],
                         A, b, triple_to_var, var_to_triple,
                         eps_support: float = 1e-9, eps_rank: float = 1e-8,
@@ -416,6 +440,7 @@ def build_vertex_record(n: int, seed: int, sol: Dict[str, Any],
     S = sol["support"]
     rec["objective_value"] = sol["objective_value"]
     rec["support_size"] = len(S)
+    rec["radius_from_uniform"] = float(np.sqrt(np.sum((x - 1.0 / n) ** 2)))
     rec["average_vertical_shaft_size"] = len(S) / (n * n)
     # A vertex is SIMPLE (non-degenerate) iff its support is maximal.
     rec["is_simple_vertex"] = (len(S) == constraint_rank_expected(n))
@@ -433,9 +458,10 @@ def build_vertex_record(n: int, seed: int, sol: Dict[str, Any],
         rec[key] = rank_info[key]
     rec["min_positive_value"] = rank_info["min_y"]  # == min positive x value
 
-    # value classification
+    # value classification (distinct_values overridden with exact ratios)
     pos_vals = [x[i, j, k] for (i, j, k) in S]
     rec.update(value_stats(pos_vals, eps_value))
+    rec["distinct_values"] = exact_ratio_values(A, S, triple_to_var, b)
 
     # numerical stability
     ssbe = support_size_by_eps(x)
@@ -490,8 +516,9 @@ def _slim_record(rec: Dict[str, Any]) -> Dict[str, Any]:
     g = rec.get("support_graph", {})
     slim = {
         "seed": rec["seed"],
-        "distinct_values": rec.get("distinct_values"),
         "support_size": rec["support_size"],
+        "radius_from_uniform": rec.get("radius_from_uniform"),
+        "distinct_values": rec.get("distinct_values"),
         "is_half_integral": rec["is_half_integral"],
         "shaft_size_histogram": rec["shaft_size_histogram"],
         "row_symbol_support_histogram": rec["row_symbol_support_histogram"],
