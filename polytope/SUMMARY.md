@@ -1,6 +1,7 @@
 # Vertices of the n×n×n tristochastic polytope
 
-Context handoff for continuing this work (e.g. from Claude on the web).
+Context handoff for continuing this work (e.g. from Claude on the web). It
+summarizes every experiment built, the files they produce, and the findings.
 
 ## Math
 
@@ -8,102 +9,125 @@ A tristochastic tensor `x = (x_ijk) ∈ ℝ^{n³}` has `x_ijk ≥ 0` and every *
 sums to 1:
 
 ```
-Σ_k x_ijk = 1   Σ_j x_ijk = 1   Σ_i x_ijk = 1
+Σ_k x_ijk = 1     Σ_j x_ijk = 1     Σ_i x_ijk = 1
 ```
 
-There are `3n²` line constraints; the constraint matrix `A` has rank
-`3n²−3n+1`. A feasible point is a **vertex** iff the columns of `A` on its
+There are `3n²` line constraints; the incidence/constraint matrix `A` has rank
+`r = 3n²−3n+1`. A feasible point is a **vertex** iff the columns of `A` on its
 support `S = supp(x)` are linearly independent (nullity 0) and `A_S x_S = 1` has
-a unique **strictly positive** solution. Hence a vertex support has size
-`n² ≤ |S| ≤ 3n²−3n+1`. The 0/1 vertices are Latin squares; the interesting ones
-are fractional.
+a unique **strictly positive** solution. So a vertex support has
+`n² ≤ |S| ≤ r`, and it is **simple** (non-degenerate) exactly when `|S| = r`
+(maximal support). The 0/1 vertices are Latin squares; the interesting ones are
+fractional, and the prized ones are the large-support / simple fractional
+vertices.
 
-Dependencies: `numpy`, `scipy`, `networkx`. Note: several filenames contain
-spaces — quote them on the command line.
+Dependencies: `numpy`, `scipy`, `networkx`. Note: some filenames contain spaces
+— quote them. Work is on git branch `21.08.2026` (remote `origin`).
 
-## Code files (`polytope/`)
+## The experiments (in `polytope/`)
 
-### `polytope simulation.py`
-Samples vertices by maximizing a random linear objective over the polytope (an
-LP), then studies the support. Uses `highs-ds` (dual simplex) so the optimum is
-a genuine vertex. Subcommands:
-- `demo` — sanity check for n=3,4,5 (support size ≤ bound, nullity 0, residuals).
-- `sample --n N --trials T --seed S --out FILE.jsonl` — bulk sample to JSONL.
-- `summarize FILE...` — aggregate stats per n.
-- `enrich --n N --target K --out FILE.jsonl` — collect only **fractional
-  (non-0/1)** vertices, dedup by support, rank by support size; flags a "simple"
-  (full-support) vertex. Supports `--exclude-existing FILE...` to never repeat
-  supports from earlier runs.
-- `show FILE --index I | --seed S | --all` — render a vertex's "quasi-Latin-
-  square" support map `Q[i][j] = {supported k}` as a bordered grid.
+### 1. `polytope simulation.py` — random-objective LP sampler
+Maximize a random linear objective over the polytope (LP, dual simplex) → a
+vertex; study its support. Subcommands: `demo` (sanity n=3,4,5), `sample`
+(bulk → JSONL), `summarize` (aggregate stats), `enrich` (keep only fractional
+non-0/1 vertices, dedup, rank by support size, flag simple), `show` (render a
+vertex's "quasi-Latin-square" support map as a grid). Shared serialization
+(`build_vertex_record`) and helpers live here and are reused by the walks.
+- **Finding:** a random objective mostly lands on **integral** (Latin-square)
+  vertices; fractional ones are rarer (hence `enrich`). At n=5/6 the fractional
+  vertices are mostly half-integral `{1/2,1}` with some thirds/quarters; n=6
+  reaches richer denominators (up to `1/13`, `1/17`). At n=10 objective-LP
+  reaches support up to ~259/271 but **never simple**.
 
-### `probabilistic simulation.py`
-Nati's **random line-choice** experiment. For each of the `3n²` lines pick one
-coordinate uniformly; `S = union`. By construction `E|S| = 3n²−3n+1` (the vertex
-bound). For each `S` it solves ONE LP
+### 2. `tristochastic_lp_walk.py` — support-shrinking walk to a vertex
+Start at the uniform tensor `U = 1/n` (deep interior). Repeatedly pick a
+direction `D ∈ ker(A_S)` (support- and line-sum-preserving) and step to the
+boundary, zeroing ≥1 coordinate; the support strictly shrinks until
+`ker(A_S) = {0}` — exactly the vertex condition. Direction via a small LP
+(`RandomLPNullspaceDirectionStrategy`); vertex certified exactly (mod-p full
+column rank). CLI: `--n --walks/--target --out ...`; `times_reached` counter,
+fresh unused walk seeds per run, crash-safe incremental writes,
+`--exclude-existing`/merge.
+- **Finding:** this **reliably reaches the large-support / simple fractional
+  vertices** the objective sampler misses. n=10 walks land at support 269–271
+  of 271 (several simple); n=13/15 similar. Radius from the uniform center grows
+  ~linearly with n (n=10→15 ≈ 6.0 → 9.3). Vertices are richly fractional with
+  large denominators (e.g. n=10 values on a `/1373` grid).
 
-```
-maximize t   subject to   A_S y = b,  y_i ≥ t
-```
+### 3. `tristochastic_basis_walk.py` — random basis-exchange walk
+A *basis* `B` is `r` independent columns of `A`; then `A_B x = 1` has a unique
+solution. Start from a simple vertex (loaded from `lp_walk_n{n}.jsonl`), and
+random-walk through bases: pick an entering column `e ∉ B`, compute the
+fundamental circuit `A_e = A_B α`, pick a leaving column with `α_i ≠ 0`, move to
+`B'`. Classify each basis solution **positive / zero-containing / negative**
+(residual- and rank-checked). Two output files: distinct new positive vertices
+(with `times_reached`) and one stats row per walk. Exits cleanly if no simple
+start vertex exists for that n.
+- **Finding:** across **150,000 random bases (n=10–15, 25,000 each): 0
+  positive, 0 zero-containing, 100% negative.** Strictly-positive bases (feasible
+  vertices) are vanishingly rare in the basis graph — a random exchange from a
+  vertex jumps deep into infeasibility (`min x ≈ −0.8`) and never returns.
 
-and classifies by the optimum `t*`:
-- LP infeasible → **not solvable** (`b ∉ Im(A_S)`).
-- `t* > 0` → **exact-positive** (S is the support of a real polytope point).
-- `t* ≈ 0` → solvable but a coordinate is forced to 0 (boundary).
-- `t* < 0` → **forced negative** (every solution has a negative entry).
-- nullity(A_S) = 0 → unique solution → **vertex** when also exact-positive.
+### 4. `probabilistic simulation.py` — random line-choice supports (Nati's idea)
+For each of the `3n²` lines pick one coordinate uniformly; `S = union`. By
+construction `E|S| = r`. One max-`t` LP classifies whether `S` is the support of
+a feasible polytope point / a vertex; reports `prob_positive_support`,
+`prob_vertex_support`, and a solvability breakdown. Flags include
+`--save-failed`/`--failed-out` to inspect failed supports.
+- **Finding:** the construction gets the expected **size** exactly, but the
+  support is almost never valid: `prob_positive ≈ 0.5%` at n=3, `≈ 0%` at n=4/5;
+  `prob_vertex ≈ 0`. The right size does not give a real support by chance.
 
-Prints `prob_positive_support_in_polytope`, `prob_vertex_support`, and a full
-solvability breakdown (positive / not-exact / forced-negative, each with a
-"uniquely solvable" sub-count). Flags: `--n --trials --seed --out
---exclude-existing --eps --save-failed --failed-out`.
+### 5. `computer search.py` — exact n=3 vertex enumeration
+Enumerates **all** vertices for n=3 with exact rational arithmetic by iterating
+all `C(27,8)` zero-sets (dim `P` = 8). `--show-support-map ID` reprints a vertex;
+`--mode random_lp` is an n≥4 sampling fallback. `_crosscheck_n3.py` independently
+verifies completeness (second enumeration + random-LP subset test).
+- **Finding:** n=3 has **exactly 66 vertices** = 12 permutation (support 9,
+  value `{1}`) + 54 half-integral (support 17, values `{1/2,1}`); **no simple
+  vertices**. Verified complete two independent ways. (Correct but slow, ~11 min.)
 
-### `computer search.py`
-**Exact** enumeration of *all* n=3 vertices (rational arithmetic). Since
-`dim(P) = 27 − 19 = 8`, every vertex has ≥8 zero coordinates with independent
-normals, so enumerating all `C(27,8) = 2,220,075` zero-sets, solving exactly,
-and keeping unique strictly-positive supports finds every vertex. Also
-`--show-support-map ID` (recomputes deterministically, prints one vertex's map)
-and `--mode random_lp` (n≥4 sampling fallback). Correct but slow (~11 min).
+## Result files
 
-### `_crosscheck_n3.py`
-Independent completeness check: a second (determinant-gated) enumeration plus a
-random-LP subset test.
+| files | from | contents |
+|---|---|---|
+| `frac_n5.jsonl`, `frac_n6.jsonl` | `enrich` | 200 fractional vertices each |
+| `enrich_n10.jsonl` | `enrich` | n=10 objective-LP fractional vertices (support ≤ 259, none simple) — comparison baseline |
+| `lp_walk_n3…n15.jsonl` | LP walk | distinct vertices reached descending from the center; mostly large-support / simple fractional |
+| `basis_walk_stats_n10…n15.jsonl` | basis walk | one row per walk (positive/zero/negative counts + %); all 100% negative |
+| `basis_walk_vertices_n10…n15.jsonl` | basis walk | new positive vertices found — all **empty** (none found) |
+| `line_support_n3.jsonl` (+ empty n4/n5) | line-choice | exact-positive supports found by random line-choice |
+| `results_n3/vertices_n3.json` | exact enum | 66 vertices (compact: id, support_size, unique_values) |
 
-## Results files (`polytope/`)
+## Shared record conventions
 
-- **`frac_n5.jsonl`, `frac_n6.jsonl`** — 200 fractional vertices each (from
-  `enrich`). Per record: `seed`, `distinct_values` (fraction strings, e.g.
-  `["1/2","1"]`), `support_size`, `is_half_integral`, three support histograms
-  (`shaft_size_histogram`, `row_symbol_support_histogram`,
-  `column_symbol_support_histogram`), `component_sizes`,
-  `num_bipartite_components`, `num_nonbipartite_components`, `support_map`.
-- **`line_support_n3.jsonl`** — 40 exact-positive supports found by the random
-  line-choice method at n=3 (all `positive_nonvertex`).
-  `line_support_n4.jsonl`, `line_support_n5.jsonl` are empty (none found).
-- **`failed_n5.jsonl`** — a couple of *failed* supports (throwaway test artifact).
-- **`results_n3/vertices_n3.json`** — the exact enumeration output:
-  `total_vertices`, size/value distributions, and one compact line per vertex
-  `{vertex_id, support_size, unique_values}`. Supports are NOT stored (recompute
-  with `computer search.py --show-support-map ID`).
+Vertex records (from `build_vertex_record`) lead with, in order,
+`seed → [times_reached] → support_size → radius_from_uniform → distinct_values`,
+then support histograms, `is_integral`/`is_half_integral`/`is_simple_vertex`,
+support graph info, and the `support_map`. Notably:
+- `distinct_values` are **exact ratios** (e.g. `["1/2","1"]`), recovered by
+  re-solving `A_S y = 1` cleanly — correct even for large denominators.
+- `radius_from_uniform = ‖x − U‖_F`.
+- `times_reached` counts revisits; identity is the **canonical support**
+  (`frozenset` of triples). Files dedup on this, write crash-safe, support
+  `--exclude-existing` merges, and reruns draw fresh unused seeds.
 
-## Key findings
+## Overall picture
 
-- Random-objective LP mostly lands on **integral** (Latin-square) vertices;
-  fractional ones are rare — hence the `enrich` filter. n=5 fractional values are
-  mostly half-integral `{1/2, 1}` plus some `1/3`, `1/4`; n=6 reaches much richer
-  denominators (up to `1/13`, `1/17`).
-- Random line-choice supports hit the expected **size** exactly
-  (`E|S| = 3n²−3n+1`) but are almost never a valid support:
-  `prob_positive ≈ 0.5%` at n=3, `≈ 0%` at n=4/5; `prob_vertex ≈ 0`.
-- **n=3 has exactly 66 vertices**: 12 permutation (support 9, value `{1}`) + 54
-  half-integral (support 17, values `{1/2, 1}`). No full-support/simple vertices.
-  Verified complete two independent ways.
+- **Finding simple/large-support fractional vertices:** the **support-shrinking
+  LP walk from the center** is the effective method; objective-LP sampling and
+  random line-choice do not reach them.
+- **Basis graph:** feasible (positive) bases are essentially isolated —
+  0 in 150,000 random bases.
+- **Small n exactly known:** n=3 = 66 vertices (no simple ones).
 
 ## Open items
 
-- `computer search.py` is correct but slow (~11 min) — most `C(27,8)` iterations
-  raise a singular-matrix exception; a determinant gate (as in
-  `_crosscheck_n3.py`) gives roughly a 10× speedup.
-- The repo has committed `.pyc` files and a UTF-16-encoded `.gitignore` (git
-  misreads it, so nothing is actually ignored) — minor cleanup available.
+- `computer search.py` exact enumeration is slow (~11 min); a determinant gate
+  (as in `_crosscheck_n3.py`) would give ~10×.
+- Larger n for the LP walk gets expensive (n=15 ≈ 7 min/walk, n=20 > 12 min/walk)
+  — a nullspace-projection direction strategy could speed it up; not yet built.
+- Long runs must keep the machine on AC power (no-sleep settings only apply on
+  AC; on battery it sleeps and suspends the job).
+- Minor repo cleanup: committed `.pyc` files and a UTF-16 `.gitignore` (git
+  misreads it, so nothing is actually ignored).
