@@ -87,6 +87,24 @@ verifies completeness (second enumeration + random-LP subset test).
   value `{1}`) + 54 half-integral (support 17, values `{1/2,1}`); **no simple
   vertices**. Verified complete two independent ways. (Correct but slow, ~11 min.)
 
+### 6. `tristochastic_latin_cube_search.py` — 3-Latin-square + provenance cube switch
+Sample 3 Latin squares, average their permutation tensors (`X = (P1+P2+P3)/3`,
+support = union, values 1/3, 2/3, 1). Work in exact integer units of 1/3.
+Admit a triple only if its support size is exactly `r`; then repeatedly apply a
+`2×2×2` cube switch that keeps the support at exactly `r`: one checkerboard
+class (all value 1/3, with **provenance** covering L1,L2,L3) goes 1/3→0 while the
+opposite class (all 0) goes 0→1/3. Provenance = the single Latin square a 1/3
+cell came from; any cell touched by a switch becomes None. Exhaustive cube
+search (`C(n,2)³`, both orientations), cycle-prevention on visited supports,
+random choice among valid moves. After each switch, test `rank(A_S)=r` (vertex).
+Replaces an earlier random-cube version (removed). CLI: `--n --walks --seed …`.
+- **Finding:** the most productive **simple-vertex** generator — at every n from
+  10 to 15, ~33–44 of every 100 admitted walks reach a full/simple vertex
+  (support = r), all distinct, no duplicates (~220 simple vertices total).
+  Admit rate (fraction of triples with support exactly r) ≈ 6–8%; mean ~9–12
+  switches to a vertex. (At small n=4/5 it mostly stalls — valid cubes are rare
+  there.)
+
 ## Result files
 
 | files | from | contents |
@@ -97,6 +115,8 @@ verifies completeness (second enumeration + random-LP subset test).
 | `basis_walk_stats_n10…n15.jsonl` | basis walk | one row per walk (positive/zero/negative counts + %); all 100% negative |
 | `basis_walk_vertices_n10…n15.jsonl` | basis walk | new positive vertices found — all **empty** (none found) |
 | `line_support_n3.jsonl` (+ empty n4/n5) | line-choice | exact-positive supports found by random line-choice |
+| `latin_cube_vertices_n10…n15.jsonl` | latin-cube | distinct simple vertices found by cube switching (values 1/3, 2/3) |
+| `latin_cube_stats_n10…n15.jsonl` | latin-cube | per-walk rows + a final summary row (admit %, histogram, counts) |
 | `results_n3/vertices_n3.json` | exact enum | 66 vertices (compact: id, support_size, unique_values) |
 
 ## Shared record conventions
@@ -114,9 +134,10 @@ support graph info, and the `support_map`. Notably:
 
 ## Overall picture
 
-- **Finding simple/large-support fractional vertices:** the **support-shrinking
-  LP walk from the center** is the effective method; objective-LP sampling and
-  random line-choice do not reach them.
+- **Finding simple / large-support fractional vertices:** two effective methods —
+  the **support-shrinking LP walk from the center**, and (most productively) the
+  **3-Latin-square cube switch** (~33–44% of admitted walks give a simple vertex,
+  n=10–15). Objective-LP sampling and random line-choice do not reach them.
 - **Basis graph:** feasible (positive) bases are essentially isolated —
   0 in 150,000 random bases.
 - **Small n exactly known:** n=3 = 66 vertices (no simple ones).

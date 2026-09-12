@@ -1,0 +1,25 @@
+C:\Users\bhome\AppData\Local\Programs\Python\Python310\lib\site-packages\scipy\__init__.py:169: UserWarning: A NumPy version >=1.18.5 and <1.26.0 is required for this version of SciPy (detected version 1.26.4
+  warnings.warn(f"A NumPy version >={np_minversion} and <{np_maxversion}"
+latin-cube search  (n=10, r=271, 10 walks, <= 500 steps, 200 cubes/step)
+
+  walk 1: union 276 -> [274..530] in 500 steps  -> max_steps
+  walk 2: union 268 -> [268..528] in 500 steps  -> max_steps
+  walk 3: union 279 -> [274..279] in 5 steps  -> no_acceptable_cube_found
+  walk 4: union 282 -> [273..282] in 17 steps  -> no_acceptable_cube_found
+  walk 5: union 274 -> [273..281] in 8 steps  -> no_acceptable_cube_found
+  walk 6: union 272 -> [272..309] in 32 steps  -> no_acceptable_cube_found
+  walk 7: union 270 -> [270..270] in 0 steps  -> no_acceptable_cube_found
+  walk 8: union 255 -> [255..256] in 1 steps  -> VERTEX size 256/271 radius=5.812
+  walk 9: union 269 -> [269..272] in 7 steps  -> no_acceptable_cube_found
+  walk 10: union 266 -> [266..280] in 7 steps  -> no_acceptable_cube_found
+
+==============================================================
+LATIN-CUBE SUMMARY   (n=10, r=271)
+==============================================================
+  walks                 : 10
+  vertices found        : 1   (new distinct saved: 1)
+  stop reasons          : {'max_steps': 2, 'no_acceptable_cube_found': 7, 'vertex': 1}
+  vertex file           : latin_cube_vertices_n10.jsonl
+  stats file            : latin_cube_walk_stats_n10.jsonl
+  wall time             : 27.8s
+exit: 0
