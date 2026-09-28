@@ -2,8 +2,6 @@
 3-Latin-square + provenance cube-switch search for vertices of the n x n x n
 tristochastic polytope.  SEPARATE experiment; own result files.
 
-This REPLACES the earlier "sample 3 Latin squares + random cube" script.
-
 Idea
 ----
 Sample 3 Latin squares, average their permutation tensors:
@@ -20,25 +18,49 @@ initial support size is exactly
 switch that keeps the support size at exactly r, checking after every switch
 whether the point is a vertex (rank(A_S) = r).
 
-Cube-switch conditions (exhaustive over all C(n,2)^3 cubes, both orientations)
------------------------------------------------------------------------------
+Cube-switch conditions (shared by every proposal mechanism)
+-----------------------------------------------------------
 A cube splits into two checkerboard parity classes of 4 corners.  A switch is
 valid when one class P has all four values == 1/3 and the opposite class Z has
-all four values == 0, AND the PROVENANCE of the four P corners collectively
-covers {L1, L2, L3}:
+all four values == 0, AND the CURRENT PROVENANCE of the four P corners
+collectively covers {L1, L2, L3}:
   * a value-1/3 cell that came from exactly one original Latin square is owned
     by that square (L1/L2/L3);
   * any cell touched by a previous switch has provenance None.
 The switch sets P: 1/3 -> 0 and Z: 0 -> 1/3 (i.e. step 1/3 along ker(A)); all 8
-cube cells then become provenance None.  Support stays exactly r.
+cube cells then become provenance None.  Support stays exactly r.  Cycle
+prevention: never switch into a support already visited in the same walk.
 
-Cycle prevention: track visited supports within a walk; never switch into an
-already-visited support.  If no valid unvisited cube exists, the walk stalls and
-a fresh triple is sampled.
+Next-cube proposal  (--cube-search)
+-----------------------------------
+sampled (DEFAULT) -- structured provenance sampler.  One proposal:
+  1. pick a square La and an untouched 1/3 cell p with provenance La;
+  2. pick Lb != La (Lc is the remaining square) and an axis; pick an untouched
+     1/3 cell q with provenance Lb sharing EXACTLY that coordinate with p, so
+     p, q are a face diagonal (same checkerboard class of a possible cube);
+  3. the missing coordinate x2 is read off the ORIGINAL square Lc along the two
+     lines that would hold the other positive corners -> at most 2 candidates;
+  4. each candidate goes through the same validity test as exhaustive mode,
+     then the visited-support check.
+  Every valid cube has positive proposal probability.  Up to
+  --cube-attempts-per-step proposals are tried per step; if none yields an
+  admissible move the walk ends with `cube_proposal_budget_exhausted` -- this is
+  NOT a proof that no move exists.
+exhaustive -- scan all C(n,2)^3 cubes, both orientations (debugging/comparison;
+  its cube table needs ~64*C(n,2)^3 bytes, so it is refused for large n).
+
+Walk stop reasons
+-----------------
+vertex_at_start, vertex, max_switches,
+stalled                          -- provably no admissible move (exhaustive
+                                    found none unvisited, or some square has no
+                                    untouched 1/3 cell left),
+cube_proposal_budget_exhausted   -- sampled mode gave up.
 
 CLI
 ---
     python tristochastic_latin_cube_search.py --n 10 --walks 100 --seed 1
+    python tristochastic_latin_cube_search.py --n 10 --walks 100 --cube-search exhaustive
 """
 
 import argparse
@@ -47,6 +69,7 @@ import os
 import time
 from collections import Counter
 from itertools import combinations
+from math import comb
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -65,6 +88,10 @@ polysim = lw.polysim
 
 _EVEN_POS = [0, 3, 5, 6]      # corners (a,b,c) with even parity  (t = 4a+2b+c)
 _ODD_POS = [1, 2, 4, 7]       # corners with odd parity
+_OTHER_AXES = {0: (1, 2), 1: (0, 2), 2: (0, 1)}
+_SAMPLER_KEYS = ("proposals", "q_found", "candidates", "pass_values",
+                 "pass_provenance", "admissible")
+_EXHAUSTIVE_MAX_BYTES = 4e9
 
 
 # ------------------------------------------------------------
@@ -109,6 +136,42 @@ def build_cubes(n: int) -> np.ndarray:
     return np.array(rows, dtype=np.int64)
 
 
+def line_positions(L: List[np.ndarray], n: int) -> np.ndarray:
+    """
+    Geometry of the ORIGINAL squares (never used as provenance):
+    line_pos[t, ax, x, y] = coordinate along axis ax of square t's unique 1 on
+    the line whose other two coordinates (in increasing axis order) are (x, y).
+    """
+    line_pos = np.empty((3, 3, n, n), dtype=np.int64)
+    I, J = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    for t, Lt in enumerate(L):
+        K = Lt
+        line_pos[t, 2][I, J] = K      # k varies, indexed (i, j)
+        line_pos[t, 1][I, K] = J      # j varies, indexed (i, k)
+        line_pos[t, 0][J, K] = I      # i varies, indexed (j, k)
+    return line_pos
+
+
+def cube_cells(p, q, x2: int, ax: int, n: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    p, q share coordinate `ax`; the cube uses {p[ax], x2} on that axis.
+    P = checkerboard class containing p and q, Z = opposite class.
+    """
+    u, w = _OTHER_AXES[ax]
+
+    def flat(vax, vu, vw):
+        c = [0, 0, 0]
+        c[ax], c[u], c[w] = vax, vu, vw
+        return c[0] * n * n + c[1] * n + c[2]
+
+    a1, u1, w1, u2, w2 = int(p[ax]), int(p[u]), int(p[w]), int(q[u]), int(q[w])
+    P = np.array([flat(a1, u1, w1), flat(a1, u2, w2), flat(x2, u1, w2), flat(x2, u2, w1)],
+                 dtype=np.int64)
+    Z = np.array([flat(a1, u1, w2), flat(a1, u2, w1), flat(x2, u1, w1), flat(x2, u2, w2)],
+                 dtype=np.int64)
+    return P, Z
+
+
 # ------------------------------------------------------------
 # Vertex test
 # ------------------------------------------------------------
@@ -120,23 +183,36 @@ def float_rank(A_S: np.ndarray, tol: float = 1e-8) -> int:
     return int(np.sum(np.abs(np.diag(R)) > tol))
 
 
-def is_vertex(A, A_dense, support_sorted, r: int) -> bool:
-    """support has size r; vertex iff rank(A_S) = r (float pre-filter + exact)."""
-    if float_rank(A_dense[:, support_sorted]) != r:
+def is_vertex(A, A_csc, support_sorted, r: int) -> bool:
+    """support has size r; vertex iff rank(A_S) = r (float pre-filter + exact).
+    Only the support columns are densified (same A_S as before)."""
+    if float_rank(A_csc[:, support_sorted].toarray()) != r:
         return False
     return lw.full_column_rank_modp(A, list(support_sorted))
 
 
 # ------------------------------------------------------------
-# Valid cube search (exhaustive, vectorized)
+# Common validity check (authoritative for both proposal mechanisms)
+# ------------------------------------------------------------
+
+def check_cube(X_int, prov, P, Z) -> Tuple[bool, bool]:
+    """(values_ok, provenance_ok): P all 1/3 and Z all 0; provenance(P) >= {L1,L2,L3}."""
+    if not ((X_int[P] == 1).all() and (X_int[Z] == 0).all()):
+        return False, False
+    pv = prov[P]
+    return True, bool((pv == 0).any() and (pv == 1).any() and (pv == 2).any())
+
+
+def switched_support(support_set, P, Z) -> frozenset:
+    return frozenset((support_set - set(P.tolist())) | set(Z.tolist()))
+
+
+# ------------------------------------------------------------
+# Proposal mechanism 1: exhaustive (vectorized form of check_cube)
 # ------------------------------------------------------------
 
 def find_valid_cubes(X_int, prov, cubes) -> List[Tuple[np.ndarray, np.ndarray]]:
-    """
-    Return list of (P_cells, Z_cells) for every cube+orientation where the P
-    class is all 1/3 (value 1), the Z class is all 0, and P's provenance covers
-    {L1,L2,L3}.  P_cells are switched 1/3->0, Z_cells 0->1/3.
-    """
+    """All (P, Z) over every cube+orientation passing check_cube (vectorized)."""
     vals = X_int[cubes]                       # (ncubes, 8)
     ev = vals[:, _EVEN_POS]
     od = vals[:, _ODD_POS]
@@ -159,38 +235,128 @@ def find_valid_cubes(X_int, prov, cubes) -> List[Tuple[np.ndarray, np.ndarray]]:
     return out
 
 
+def exhaustive_move(X_int, prov, support_set, visited, cubes, rng):
+    """Random admissible unvisited move among all valid cubes, or 'stalled'."""
+    valid = find_valid_cubes(X_int, prov, cubes)
+    cands = []
+    for P, Z in valid:
+        newkey = switched_support(support_set, P, Z)
+        if newkey not in visited:
+            cands.append((P, Z, newkey))
+    if not cands:
+        return None, "stalled", len(valid)
+    return cands[int(rng.integers(len(cands)))], "ok", len(valid)
+
+
+# ------------------------------------------------------------
+# Proposal mechanism 2: structured provenance sampler (default)
+# ------------------------------------------------------------
+
+def sampled_move(X_int, prov, support_set, visited, line_pos, n, rng, attempts, st):
+    """
+    Up to `attempts` structured proposals (see module docstring).  Returns
+    (move, reason): move = (P, Z, newkey) or None; reason in
+    {'ok', 'stalled', 'cube_proposal_budget_exhausted'}.  Updates counters in st.
+    """
+    nn = n * n
+    classes = []
+    for t in range(3):
+        cells = np.nonzero((X_int == 1) & (prov == t))[0]
+        if cells.size == 0:
+            # provenance(P) must contain every square -> provably no valid cube
+            return None, "stalled"
+        classes.append(np.stack((cells // nn, (cells // n) % n, cells % n), axis=1))
+
+    for _ in range(attempts):
+        st["proposals"] += 1
+        a = int(rng.integers(3))
+        b = (a + 1 + int(rng.integers(2))) % 3
+        c = 3 - a - b
+        p = classes[a][int(rng.integers(len(classes[a])))]
+        ax = int(rng.integers(3))
+        u, w = _OTHER_AXES[ax]
+        cb = classes[b]
+        hits = np.nonzero((cb[:, ax] == p[ax]) & (cb[:, u] != p[u]) & (cb[:, w] != p[w]))[0]
+        if hits.size == 0:
+            continue
+        st["q_found"] += 1
+        q = cb[hits[int(rng.integers(hits.size))]]
+
+        # Lc supplies the missing coordinate along the lines of the two other P corners
+        x2_options = {int(line_pos[c, ax, p[u], q[w]]), int(line_pos[c, ax, q[u], p[w]])}
+        admissible = []
+        for x2 in sorted(x2_options):
+            if x2 == p[ax]:
+                continue
+            st["candidates"] += 1
+            P, Z = cube_cells(p, q, x2, ax, n)
+            values_ok, prov_ok = check_cube(X_int, prov, P, Z)
+            if not values_ok:
+                continue
+            st["pass_values"] += 1
+            if not prov_ok:
+                continue
+            st["pass_provenance"] += 1
+            newkey = switched_support(support_set, P, Z)
+            if newkey in visited:
+                continue
+            st["admissible"] += 1
+            admissible.append((P, Z, newkey))
+        if admissible:
+            return admissible[int(rng.integers(len(admissible)))], "ok"
+    return None, "cube_proposal_budget_exhausted"
+
+
 # ------------------------------------------------------------
 # One admitted walk (support already == r)
 # ------------------------------------------------------------
 
-def cube_walk(X_int, prov, support_set, A, A_dense, b, r, cubes, wrng,
-              max_switches, verbose=False):
+def cube_walk(X_int, prov, support_set, A, A_csc, r, n, wrng, max_switches,
+              search, cubes, line_pos, attempts, verbose=False):
     support_sorted = np.array(sorted(support_set))
     visited = {frozenset(support_set)}
     switches = 0
     valid_counts: List[int] = []
     had_valid = False
+    st = dict.fromkeys(_SAMPLER_KEYS, 0)
 
-    if is_vertex(A, A_dense, support_sorted, r):
-        return {"status": "vertex_at_start", "X_int": X_int, "support": support_sorted,
-                "switches": 0, "valid_counts": valid_counts, "had_valid": False}
+    def result(status, **extra):
+        out = {"status": status, "switches": switches, "valid_counts": valid_counts,
+               "had_valid": had_valid or st["pass_provenance"] > 0, "sampler": st}
+        out.update(extra)
+        return out
+
+    if is_vertex(A, A_csc, support_sorted, r):
+        return result("vertex_at_start", X_int=X_int, support=support_sorted)
 
     for _step in range(max_switches):
-        valid = find_valid_cubes(X_int, prov, cubes)
-        valid_counts.append(len(valid))
-        if valid:
-            had_valid = True
-        # cycle prevention: keep only switches into unvisited supports
-        cands = []
-        for P, Z in valid:
-            newkey = frozenset((support_set - set(int(c) for c in P)) | set(int(c) for c in Z))
-            if newkey not in visited:
-                cands.append((P, Z, newkey))
-        if not cands:
-            return {"status": "stalled", "switches": switches,
-                    "valid_counts": valid_counts, "had_valid": had_valid}
+        if search == "exhaustive":
+            move, reason, nvalid = exhaustive_move(X_int, prov, support_set, visited, cubes, wrng)
+            valid_counts.append(nvalid)
+            had_valid = had_valid or nvalid > 0
+        else:
+            move, reason = sampled_move(X_int, prov, support_set, visited, line_pos, n,
+                                        wrng, attempts, st)
+        if move is None:
+            return result(reason)
 
-        P, Z, newkey = cands[int(wrng.integers(len(cands)))]
+        P, Z, newkey = move
+        values_ok, prov_ok = check_cube(X_int, prov, P, Z)       # authoritative gate
+        if not (values_ok and prov_ok) or newkey in visited:
+            raise RuntimeError("proposed cube failed the common validity check")
+
+        if verbose:
+            cells = np.concatenate([P, Z])
+            coords = np.stack((cells // (n * n), (cells // n) % n, cells % n), axis=1)
+            D = np.zeros(n ** 3)
+            D[Z], D[P] = 1.0, -1.0
+            assert len(set(cells.tolist())) == 8, "cube corners not distinct"
+            assert all(len(set(coords[:, k].tolist())) == 2 for k in range(3)), "not a 2x2x2 cube"
+            assert np.all(A @ D == 0), "P/Z not opposite checkerboard classes (A D != 0)"
+            assert (X_int[P] == 1).all() and (X_int[Z] == 0).all(), "before: P != 1/3 or Z != 0"
+            assert {0, 1, 2} <= set(prov[P].tolist()), "provenance(P) misses a square"
+            assert newkey not in visited, "revisiting a support"
+
         X_int[P] -= 1                          # 1/3 -> 0
         X_int[Z] += 1                          # 0   -> 1/3
         prov[P] = -1
@@ -201,17 +367,17 @@ def cube_walk(X_int, prov, support_set, A, A_dense, b, r, cubes, wrng,
         switches += 1
 
         if verbose:
+            assert (X_int[P] == 0).all() and (X_int[Z] == 1).all(), "after: P != 0 or Z != 1/3"
+            assert (prov[cells] == -1).all(), "switched provenance not None"
             assert len(support_set) == r, "support left size r"
-            assert np.max(np.abs(A @ (X_int / 3.0) - b)) < 1e-9, "line sums broke"
-            assert set(np.unique(X_int)).issubset({0, 1, 2, 3}), "values not in {0,1,2,3}"
-            assert (prov[P] == -1).all() and (prov[Z] == -1).all(), "switched provenance not None"
+            assert support_set == set(np.nonzero(X_int)[0].tolist()), "tracked support drifted"
+            assert np.all(A @ X_int.astype(float) == 3), "a line sum is not exactly 1"
+            assert set(np.unique(X_int).tolist()) <= {0, 1, 2, 3}, "values not in {0,1,2,3}/3"
 
-        if is_vertex(A, A_dense, support_sorted, r):
-            return {"status": "vertex", "X_int": X_int, "support": support_sorted,
-                    "switches": switches, "valid_counts": valid_counts, "had_valid": had_valid}
+        if is_vertex(A, A_csc, support_sorted, r):
+            return result("vertex", X_int=X_int, support=support_sorted)
 
-    return {"status": "max_switches", "switches": switches,
-            "valid_counts": valid_counts, "had_valid": had_valid}
+    return result("max_switches")
 
 
 # ------------------------------------------------------------
@@ -242,20 +408,33 @@ def make_vertex_record(n, walk_seed, walk_id, res, A, b, ttv, vtt):
 
 def run(args) -> None:
     n = args.n
+    sampled = args.cube_search == "sampled"
     A, b, ttv, vtt = polysim.build_tristochastic_constraints(n)
     r = polysim.constraint_rank_expected(n)
-    A_dense = A.toarray()
-    cubes = build_cubes(n)
-    print(f"latin-cube switch search  (n={n}, r={r}, {cubes.shape[0]} cubes, "
+    A_csc = A.tocsc()
+
+    cubes = None
+    if sampled:
+        mode_desc = f"sampled, {args.cube_attempts_per_step} proposals/step"
+    else:
+        need = comb(n, 2) ** 3 * 64
+        if need > _EXHAUSTIVE_MAX_BYTES:
+            print(f"exhaustive mode needs ~{need / 1e9:.1f} GB for the {comb(n, 2) ** 3:,} "
+                  f"cubes at n={n}; use --cube-search sampled.")
+            return
+        cubes = build_cubes(n)
+        mode_desc = f"exhaustive, {cubes.shape[0]:,} cubes"
+    print(f"latin-cube switch search  (n={n}, r={r}, {mode_desc}, "
           f"target {args.walks} admitted walks)\n")
 
     vertices_by_key, _ = lw.load_existing(args.out_vertices)
     master = np.random.default_rng(args.seed)
     stats_f = open(args.out_stats, "a", encoding="utf-8")
 
-    triples = admitted = already_vertex = had_valid_walks = stalled = 0
-    walks_vertex = new_saved = dup_reached = 0
+    triples = admitted = already_vertex = had_valid_walks = stalled = budget_exhausted = 0
+    walks_vertex = new_saved = dup_reached = total_switches = 0
     init_hist: Counter = Counter()
+    sampler_tot: Counter = Counter()
     switches_list: List[int] = []
     max_triples = args.max_triples if args.max_triples is not None else args.walks * 500
     t0 = time.time()
@@ -280,11 +459,15 @@ def run(args) -> None:
             prov = np.full(n ** 3, -1, dtype=np.int64)
             for t in range(3):
                 prov[(X_int == 1) & (P[t] == 1)] = t
+            line_pos = line_positions(L, n) if sampled else None
 
-            res = cube_walk(X_int, prov, support_set, A, A_dense, b, r, cubes, wrng,
-                            args.max_switches_per_walk, verbose=args.verbose)
+            res = cube_walk(X_int, prov, support_set, A, A_csc, r, n, wrng,
+                            args.max_switches_per_walk, args.cube_search, cubes, line_pos,
+                            args.cube_attempts_per_step, verbose=args.verbose)
             if res["had_valid"]:
                 had_valid_walks += 1
+            total_switches += res["switches"]
+            sampler_tot.update(res["sampler"])
             found = res["status"] in ("vertex", "vertex_at_start")
             simple = vsize = radius = None
 
@@ -310,17 +493,25 @@ def run(args) -> None:
                 already_vertex += 1
             elif res["status"] == "stalled":
                 stalled += 1
+            elif res["status"] == "cube_proposal_budget_exhausted":
+                budget_exhausted += 1
 
             vc = res["valid_counts"]
             row = {
                 "walk_id": admitted, "walk_seed": walk_seed, "n": n, "target_support": r,
                 "initial_support_size": r, "already_vertex": res["status"] == "vertex_at_start",
                 "num_cube_switches": res["switches"], "stop_reason": res["status"],
+                "cube_search": args.cube_search,
                 "vertex_found": found, "is_simple": simple, "vertex_support_size": vsize,
                 "radius_from_uniform": radius,
                 "valid_cubes_mean": round(float(np.mean(vc)), 2) if vc else None,
                 "valid_cubes_max": int(np.max(vc)) if vc else None,
             }
+            if sampled:
+                s = dict(res["sampler"])
+                s["proposals_per_switch"] = (round(s["proposals"] / res["switches"], 2)
+                                             if res["switches"] else None)
+                row["sampler"] = s
             stats_f.write(json.dumps(lw.polysim._jsonable(row)) + "\n")
             stats_f.flush()
             print(f"  walk {admitted} (triple {triples}): {res['status']}"
@@ -332,24 +523,34 @@ def run(args) -> None:
     lw.write_all(args.out_vertices, vertices_by_key)
 
     pct = 100 * admitted / triples if triples else 0.0
+    sampler_totals = None
+    if sampled:
+        sampler_totals = {k: int(sampler_tot[k]) for k in _SAMPLER_KEYS}
+        sampler_totals["switches"] = total_switches
+        sampler_totals["proposals_per_switch"] = (
+            round(sampler_totals["proposals"] / total_switches, 2) if total_switches else None)
     summary = {
         "summary": True, "n": n, "target_support": r,
+        "cube_search": args.cube_search,
+        "cube_attempts_per_step": args.cube_attempts_per_step if sampled else None,
         "triples_sampled": triples, "support_r_count": admitted,
         "support_r_percentage": round(pct, 3),
         "initial_support_histogram": dict(sorted(init_hist.items())),
         "admitted_walks": admitted, "already_vertex": already_vertex,
         "walks_with_valid_cube": had_valid_walks, "stalled_walks": stalled,
+        "budget_exhausted_walks": budget_exhausted,
         "walks_ending_at_vertex": walks_vertex,
         "distinct_vertices": len(vertices_by_key), "new_saved": new_saved,
         "duplicate_reaches": dup_reached,
         "mean_switches_to_vertex": round(float(np.mean(switches_list)), 2) if switches_list else None,
+        "sampler_totals": sampler_totals,
         "wall_time_sec": round(time.time() - t0, 1),
     }
     with open(args.out_stats, "a", encoding="utf-8") as f:
         f.write(json.dumps(lw.polysim._jsonable(summary)) + "\n")
 
     print("\n" + "=" * 62)
-    print(f"LATIN-CUBE SWITCH SUMMARY   (n={n}, r={r})")
+    print(f"LATIN-CUBE SWITCH SUMMARY   (n={n}, r={r}, {args.cube_search})")
     print("=" * 62)
     print(f"  triples sampled            : {triples}")
     print(f"  support == r               : {admitted}  ({pct:.2f}%)")
@@ -357,10 +558,18 @@ def run(args) -> None:
     print(f"  admitted already vertices  : {already_vertex}")
     print(f"  walks with a valid cube    : {had_valid_walks}")
     print(f"  stalled walks              : {stalled}")
+    if sampled:
+        print(f"  proposal budget exhausted  : {budget_exhausted}")
     print(f"  walks ending at a vertex   : {walks_vertex}")
     print(f"  distinct vertices          : {len(vertices_by_key)}  (new {new_saved}, dup {dup_reached})")
     if switches_list:
         print(f"  switches to vertex (mean)  : {np.mean(switches_list):.2f}")
+    if sampled:
+        s = sampler_totals
+        print(f"  sampler                    : {s['proposals']} proposals, q found {s['q_found']}, "
+              f"{s['candidates']} candidates, {s['pass_values']} pass 1/3-vs-0, "
+              f"{s['pass_provenance']} pass provenance, {s['admissible']} admissible; "
+              f"{s['proposals_per_switch']} proposals/switch")
     print(f"  vertex file / stats file   : {args.out_vertices} / {args.out_stats}")
     print(f"  wall time                  : {time.time() - t0:.1f}s")
 
@@ -374,16 +583,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-switches-per-walk", type=int, default=500)
     p.add_argument("--max-triples", type=int, default=None,
                    help="cap on total triples sampled (default walks*500)")
+    p.add_argument("--cube-search", choices=("sampled", "exhaustive"), default="sampled",
+                   help="next-cube proposal mechanism (default: sampled)")
+    p.add_argument("--cube-attempts-per-step", type=int, default=200,
+                   help="sampled mode: max structured cube proposals tried per step")
     p.add_argument("--tolerance", type=float, default=1e-9)
     p.add_argument("--out-vertices", type=str, default=None)
     p.add_argument("--out-stats", type=str, default=None)
     p.add_argument("--verbose", action="store_true",
-                   help="assert all invariants after every cube switch")
+                   help="assert all invariants before and after every cube switch")
     return p
 
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
+    if args.cube_attempts_per_step < 1:
+        raise SystemExit("--cube-attempts-per-step must be >= 1")
     if args.out_vertices is None:
         args.out_vertices = f"latin_cube_vertices_n{args.n}.jsonl"
     if args.out_stats is None:

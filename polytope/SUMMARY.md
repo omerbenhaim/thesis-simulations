@@ -94,16 +94,42 @@ Admit a triple only if its support size is exactly `r`; then repeatedly apply a
 `2×2×2` cube switch that keeps the support at exactly `r`: one checkerboard
 class (all value 1/3, with **provenance** covering L1,L2,L3) goes 1/3→0 while the
 opposite class (all 0) goes 0→1/3. Provenance = the single Latin square a 1/3
-cell came from; any cell touched by a switch becomes None. Exhaustive cube
-search (`C(n,2)³`, both orientations), cycle-prevention on visited supports,
-random choice among valid moves. After each switch, test `rank(A_S)=r` (vertex).
+cell came from; any cell touched by a switch becomes None. Cycle-prevention on
+visited supports. After each switch, test `rank(A_S)=r` (vertex).
 Replaces an earlier random-cube version (removed). CLI: `--n --walks --seed …`.
+Next-cube proposal, `--cube-search`:
+- `sampled` (default): pick a 1/3 cell `p` with provenance La and a 1/3 cell `q`
+  with provenance Lb sharing exactly one coordinate (a face diagonal); the
+  original square Lc fixes the missing coordinate → ≤2 candidate cubes, each
+  checked by the same validity test as exhaustive. Up to
+  `--cube-attempts-per-step` (default 200) proposals per step, else stop reason
+  `cube_proposal_budget_exhausted` (not a proof no move exists). Verified at
+  n=6/8/10: every sampled move is exhaustive-valid, and every valid cube is
+  reachable. At n=10 a budget of 200 missed existing moves in 22/60 give-ups;
+  1000 missed none (proposals are cheap).
+- `exhaustive`: all `C(n,2)³` cubes, both orientations (refused above ~4 GB,
+  e.g. n=40 would need 30 GB).
 - **Finding:** the most productive **simple-vertex** generator — at every n from
   10 to 15, ~33–44 of every 100 admitted walks reach a full/simple vertex
   (support = r), all distinct, no duplicates (~220 simple vertices total).
   Admit rate (fraction of triples with support exactly r) ≈ 6–8%; mean ~9–12
   switches to a vertex. (At small n=4/5 it mostly stalls — valid cubes are rare
   there.)
+
+### 7. `deterministic_latin_support_test.py` — deterministic admitted starting points
+Standalone, tiny: no walk, no vertex/rank test. Builds three algebraic Latin
+squares `z = x+y`, `z = ax+by`, `z = cx+dy (mod n)` (distinct nonzero
+`a,b,c,d`), forms `X = (P1+P2+P3)/3` and only asks whether `|supp(X)| = r`.
+- **Finding:** 84/93 cases matched `r` exactly (primes n=5…29). Each pair of
+  squares agrees on exactly `n` cells, so
+  `|supp| = 3n² − 3n + (cells where all three agree)`; the support is exactly `r`
+  iff the three agree only at the origin. The 9 misses are exactly the cases
+  where `(a−1,b−1)` and `(c−1,d−1)` are proportional mod `n` — the two agreement
+  lines coincide, all three agree on `n` cells and `|supp| = 3n² − 2n`. The rule
+  predicted match/miss in all 93 cases. So an admitted start can be **constructed
+  with certainty** instead of sampled at the random 6–8% admit rate (but these
+  starts are highly symmetric, so the vertices they lead to may be less varied).
+  n=40 is not prime — coefficients would have to be units mod 40 (untested).
 
 ## Result files
 
@@ -148,6 +174,9 @@ support graph info, and the `support_map`. Notably:
   (as in `_crosscheck_n3.py`) would give ~10×.
 - Larger n for the LP walk gets expensive (n=15 ≈ 7 min/walk, n=20 > 12 min/walk)
   — a nullspace-projection direction strategy could speed it up; not yet built.
+- Latin-cube at n=40: sampling and admission are instant, but the vertex test
+  dominates — float QR ≈ 6.5 s per switch, and the exact mod-p certificate
+  (`full_column_rank_modp`, dense Gauss-Jordan) ≈ 55 min per found vertex.
 - Long runs must keep the machine on AC power (no-sleep settings only apply on
   AC; on battery it sleeps and suspends the job).
 - Minor repo cleanup: committed `.pyc` files and a UTF-16 `.gitignore` (git
