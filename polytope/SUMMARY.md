@@ -102,11 +102,12 @@ Next-cube proposal, `--cube-search`:
   with provenance Lb sharing exactly one coordinate (a face diagonal); the
   original square Lc fixes the missing coordinate → ≤2 candidate cubes, each
   checked by the same validity test as exhaustive. Up to
-  `--cube-attempts-per-step` (default 200) proposals per step, else stop reason
+  `--cube-attempts-per-step` (default 1000) proposals per step, else stop reason
   `cube_proposal_budget_exhausted` (not a proof no move exists). Verified at
   n=6/8/10: every sampled move is exhaustive-valid, and every valid cube is
-  reachable. At n=10 a budget of 200 missed existing moves in 22/60 give-ups;
-  1000 missed none (proposals are cheap).
+  reachable. The default was raised 200 → 1000 because at n=10 a budget of 200
+  gave up while 1–4 valid cubes still existed in 22/60 walks, while 1000 gave up
+  only on true dead ends (proposals are cheap next to the rank test).
 - `exhaustive`: all `C(n,2)³` cubes, both orientations (refused above ~4 GB,
   e.g. n=40 would need 30 GB).
 - **Finding:** the most productive **simple-vertex** generator — at every n from
@@ -115,6 +116,16 @@ Next-cube proposal, `--cube-search`:
   Admit rate (fraction of triples with support exactly r) ≈ 6–8%; mean ~9–12
   switches to a vertex. (At small n=4/5 it mostly stalls — valid cubes are rare
   there.)
+- **Finding (switch counts, n=10–15):** successful walks are *short* and the
+  effort splits in two. The median successful walk needs **1 switch** at n≥13
+  (14/100 admitted walks at n=10 rising to 31/100 at n=15 are a vertex after a
+  single switch — 70% of all vertices found at n=15); a thin tail needs tens of
+  switches (max 41 at n=10, 79–85 at n=14/15). Walks that *fail* run until no
+  valid cube is left, ≈0.5–0.6·n² switches (mean 47 at n=10, 129 at n=15), so
+  nearly all rank tests are spent on walks that never reach a vertex. The start
+  `X` is an average of three distinct Latin-square vertices, so it is never
+  itself a vertex (`already_vertex` = 0 everywhere) — ≥1 switch is always needed.
+  No walk hit the 500-switch cap, but at n=40 a failed walk would run ~800+.
 
 ### 7. `deterministic_latin_support_test.py` — deterministic admitted starting points
 Standalone, tiny: no walk, no vertex/rank test. Builds three algebraic Latin
@@ -177,6 +188,14 @@ support graph info, and the `support_map`. Notably:
 - Latin-cube at n=40: sampling and admission are instant, but the vertex test
   dominates — float QR ≈ 6.5 s per switch, and the exact mod-p certificate
   (`full_column_rank_modp`, dense Gauss-Jordan) ≈ 55 min per found vertex.
+  **Planned order before any n=40 run:** (1) stop recomputing the whole QR each
+  step — consecutive supports differ in only 8 columns (`S' = (S∖P) ∪ Z`, 4 out,
+  4 in), so the numerical rank should be *updated*, not rebuilt; most steps then
+  answer "still rank-deficient" cheaply (at 6.5 s/step a 500-step walk costs
+  ~54 min of pure rank recomputation). (2) Speed up the exact mod-p certificate,
+  which is only needed when the numerical test says rank = r. (3) Only then run
+  n=40. A deterministic admitted start (experiment 7) removes the sampling cost
+  but not the rank cost.
 - Long runs must keep the machine on AC power (no-sleep settings only apply on
   AC; on battery it sleeps and suspends the job).
 - Minor repo cleanup: committed `.pyc` files and a UTF-16 `.gitignore` (git

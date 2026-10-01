@@ -585,7 +585,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cap on total triples sampled (default walks*500)")
     p.add_argument("--cube-search", choices=("sampled", "exhaustive"), default="sampled",
                    help="next-cube proposal mechanism (default: sampled)")
-    p.add_argument("--cube-attempts-per-step", type=int, default=200,
+    p.add_argument("--cube-attempts-per-step", type=int, default=1000,
                    help="sampled mode: max structured cube proposals tried per step")
     p.add_argument("--tolerance", type=float, default=1e-9)
     p.add_argument("--out-vertices", type=str, default=None)
