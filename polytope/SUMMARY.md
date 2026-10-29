@@ -142,6 +142,49 @@ squares `z = x+y`, `z = ax+by`, `z = cx+dy (mod n)` (distinct nonzero
   starts are highly symmetric, so the vertices they lead to may be less varied).
   n=40 is not prime — coefficients would have to be units mod 40 (untested).
 
+### 8. `tristochastic_algebraic_two_cube_search.py` — algebraic start + EXACTLY two switches
+Takes the algebraic average of experiment 7 (`z = x+y`, `ax+by`, `cx+dy`, prime n)
+and asks whether **two** cube switches turn it into a full-support vertex. Stops
+after the second switch, always. Switch 1 must contain the origin (where all
+three squares agree, so `X_000 = 1`): cube `{0,i}x{0,j}x{0,k}`, the three
+non-origin decreasing corners exactly 1/3, `(i,j,k)` already positive, so
+`X_000 : 1 -> 2/3` and `|S|` stays `r`. Switch 2 is a *general* valid cube move —
+any cube, either orientation, decreasing corners only need to be **positive**
+(not all 1/3), no provenance rule — but it must drive at least one original `L1`
+cell to zero, else all of `P1` stays supported and no vertex is possible.
+First switches are enumerated (`(n-1)^3`); second switches are enumerated too
+while that costs under `--enumerate-max-ops`, so walks are distinct
+(first, second) pairs without replacement and "no admissible second switch" is
+*proven*; above the budget it samples and says `second_switch_budget_exhausted`
+instead (at n=11 a 500-proposal sampler missed in 4/60 tries though 454 valid
+second switches existed). Each walk's `walk_seed` is drawn before any choice and
+drives every choice, so walks replay. `--regression` re-checks the known n=5
+example (rank 59 -> 60 -> 61); `--coefficient-mode promising` scans quadruples
+for an admitted start that has an admissible first switch, lowest nullity first.
+- **Rank honesty:** `rank` is exact only when `rank_exact`; otherwise it is a
+  certified lower bound (max rank over two large primes, `rank mod p <= rank_Q`)
+  and `nullity_upper_bound` is only an upper bound. `nullity_lower_bound` counts
+  independent 2x2x2 cube kernel vectors inside the support — exact integer kernel
+  vectors whose independence is checked mod p, which implies independence over Q.
+  Where the bounds do not meet and `|S| <= --exact-rank-max-cols`, an exact
+  fraction-free (Bareiss) elimination closes it, every division checked exact.
+  Successes are always exact (`full_column_rank_modp`). Summaries keep exact and
+  bounded nullity distributions in separate fields.
+- **Finding:** two switches **do** suffice — but only from an initial nullity of
+  exactly 2, and that depends on the coefficients, not on n. n=5 exhaustive: all
+  264 valid pairs tried, **132 full simple vertices** (exactly half); n=7: 68 of
+  160 walks; n=11: 65 of 75. Every success has the nullity path **2 -> 1 -> 0**
+  (each switch raises the rank by exactly 1), support `r`, values `{1/3, 2/3}`.
+  Constructions starting at nullity >= 3 usually have **no admissible first
+  switch at all** (the preset coefficient cases at n=7/11), and the one n=11
+  case with nullity 9 reached second switches but never full rank.
+- **Open:** what makes a quadruple nullity-2? `ad-bc`, `(a-1)(d-1)-(b-1)(c-1)`
+  and `a+d-b-c` each determine the nullity at n=5 but all fail at n=7 (one value
+  of `ad-bc` spans nullities 2,3,4,5,7). 40 of 328 admitted quadruples at n=7
+  start at nullity 2, so the family is large but not yet characterized —
+  characterizing it would make the two-switch construction explicit for any
+  prime n.
+
 ## Result files
 
 | files | from | contents |
@@ -154,6 +197,9 @@ squares `z = x+y`, `z = ax+by`, `z = cx+dy (mod n)` (distinct nonzero
 | `line_support_n3.jsonl` (+ empty n4/n5) | line-choice | exact-positive supports found by random line-choice |
 | `latin_cube_vertices_n10…n15.jsonl` | latin-cube | distinct simple vertices found by cube switching (values 1/3, 2/3) |
 | `latin_cube_stats_n10…n15.jsonl` | latin-cube | per-walk rows + a final summary row (admit %, histogram, counts) |
+| `deterministic_latin_support_results.jsonl` | deterministic | 93 algebraic triples: support size vs `r` + agreement counts |
+| `algebraic_two_cube_walks_n5/n5_exhaustive/n7/n11.jsonl` | two-cube | one row per two-switch walk (both cubes, cell values before/after, rank + nullity trajectories, success/reason; tensors dumped for successes) + per-construction summary rows |
+| `algebraic_two_cube_vertices_n5/n5_exhaustive/n7/n11.jsonl` | two-cube | the distinct simple vertices reached in exactly two switches (132 / 35 / 68 / 65) |
 | `results_n3/vertices_n3.json` | exact enum | 66 vertices (compact: id, support_size, unique_values) |
 
 ## Shared record conventions
@@ -171,10 +217,13 @@ support graph info, and the `support_map`. Notably:
 
 ## Overall picture
 
-- **Finding simple / large-support fractional vertices:** two effective methods —
-  the **support-shrinking LP walk from the center**, and (most productively) the
-  **3-Latin-square cube switch** (~33–44% of admitted walks give a simple vertex,
-  n=10–15). Objective-LP sampling and random line-choice do not reach them.
+- **Finding simple / large-support fractional vertices:** three effective methods —
+  the **support-shrinking LP walk from the center**, the **3-Latin-square cube
+  switch** (~33–44% of admitted walks give a simple vertex, n=10–15), and the
+  fully deterministic **algebraic start + two cube switches** (experiments 7+8:
+  an admitted start is *constructed*, and from a nullity-2 start two switches
+  reach a simple vertex in ~40–90% of walks at n=5,7,11). Objective-LP sampling
+  and random line-choice do not reach them.
 - **Basis graph:** feasible (positive) bases are essentially isolated —
   0 in 150,000 random bases.
 - **Small n exactly known:** n=3 = 66 vertices (no simple ones).
